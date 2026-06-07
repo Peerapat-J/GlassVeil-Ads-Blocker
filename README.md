@@ -1,7 +1,7 @@
 
-# GlassVeil Ads Shield
+# GlassVeil Ads Blocker
 
-GlassVeil Ads Shield is a personal cosmetic ad-blocking Chrome extension that lets you manually pick and hide unwanted page elements such as ad banners, overlays, sticky boxes, and other distracting UI elements.
+GlassVeil Ads Blocker is a personal cosmetic ad-blocking Chrome extension that lets you manually pick and hide unwanted page elements such as ad banners, overlays, sticky boxes, and other distracting UI elements.
 
 Instead of relying on predefined filter lists, GlassVeil gives you a visual element picker. Select an element on the current website, confirm the block, and GlassVeil will save a CSS rule for that domain.
 
