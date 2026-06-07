@@ -190,6 +190,11 @@ input:checked+.slider:before {
     transform: translateX(20px);
 }
 
+.switch input:focus-visible+.slider {
+    outline: 2px solid var(--accent-cyan);
+    outline-offset: 2px;
+}
+
 /* Buttons */
 .btn {
     display: flex;
