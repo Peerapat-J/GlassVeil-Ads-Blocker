@@ -79,22 +79,42 @@ Click Reset Site Rules in the popup to remove all saved rules for the current do
 
 Use:
 
-text Command + B 
+```text
+Command + B
+```
 
 on macOS, or:
 
-text Ctrl + B 
-
+```text
+Ctrl + B
+```
 on Windows/Linux to start the element picker.
 
 You can customize the shortcut from:
 
-text chrome://extensions/shortcuts 
+```text
+chrome://extensions/shortcuts
+```
 
 ## Project Structure
 
-text GlassVeil/ ├── manifest.json ├── background/ │   └── service-worker.js ├── content/ │   ├── content.js │   └── content.css ├── popup/ │   ├── popup.html │   ├── popup.css │   └── popup.js └── icons/     ├── icon-16.png     ├── icon-48.png     └── icon-128.png 
-
+```text
+GlassVeil/
+├── manifest.json
+├── background/
+│   └── service-worker.js
+├── content/
+│   ├── content.js
+│   └── content.css
+├── popup/
+│   ├── popup.html
+│   ├── popup.css
+│   └── popup.js
+└── icons/
+    ├── icon-16.png
+    ├── icon-48.png
+    └── icon-128.png
+```
 ## Permissions
 
 GlassVeil uses the following permissions:
@@ -130,4 +150,4 @@ To modify the extension:
 1. Edit the source files.
 2. Go to chrome://extensions/.
 3. Click Reload on the GlassVeil extension card.
-4. Test the changes in a normal we
+4. Test the changes, have a good day.
