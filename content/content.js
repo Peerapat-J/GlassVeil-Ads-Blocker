@@ -1,9 +1,62 @@
 // content/content.js
 
+var GlassVeilPickerUtils = globalThis.GlassVeilPickerUtils || (() => {
+    const pickerStateClasses = new Set([
+        "glassveil-picker-hovered",
+        "glassveil-picker-selected"
+    ]);
+
+    const isPickerStateClass = (className) => pickerStateClasses.has(className);
+
+    const mergeUniqueSelectors = (existingSelectors = [], newSelectors = []) => {
+        const mergedSelectors = Array.isArray(existingSelectors) ? [...existingSelectors] : [];
+
+        newSelectors.forEach((selector) => {
+            if (typeof selector !== "string") return;
+
+            const trimmedSelector = selector.trim();
+            if (trimmedSelector && !mergedSelectors.includes(trimmedSelector)) {
+                mergedSelectors.push(trimmedSelector);
+            }
+        });
+
+        return mergedSelectors;
+    };
+
+    const formatConfirmButtonLabel = (selectedCount) => `Block Selected (${selectedCount})`;
+
+    const formatSelectionSummary = (selectedCount, activeSelector = "") => {
+        if (selectedCount === 0) return "";
+        if (selectedCount === 1) return activeSelector || "1 element selected";
+        return `${selectedCount} elements selected`;
+    };
+
+    return {
+        isPickerStateClass,
+        mergeUniqueSelectors,
+        formatConfirmButtonLabel,
+        formatSelectionSummary
+    };
+})();
+
+globalThis.GlassVeilPickerUtils = GlassVeilPickerUtils;
+
+if (typeof module !== "undefined" && module.exports) {
+    module.exports = GlassVeilPickerUtils;
+}
+
+if (typeof window !== "undefined") {
 (function () {
     // Prevent duplicate injection
     if (window.glassVeilInjected) return;
     window.glassVeilInjected = true;
+
+    const {
+        isPickerStateClass,
+        mergeUniqueSelectors,
+        formatConfirmButtonLabel,
+        formatSelectionSummary
+    } = GlassVeilPickerUtils;
 
     const currentDomain = window.location.hostname;
     let isBlockerEnabled = true;
@@ -89,32 +142,106 @@
 
     let isPickerActive = false;
     let hoveredElement = null;
-    let selectedElement = null;
-    let originalDisplay = "";
-    let wasPreviewing = false;
+    let selectedElements = new Set();
+    let activeSelectedElement = null;
+    const previewedElements = new Map();
 
     // UI container references
     let pickerRoot = null;
     let shadowRoot = null;
 
-    const restorePreview = () => {
-        if (!wasPreviewing || !selectedElement) return;
+    const restorePreviewForElement = (element) => {
+        if (!previewedElements.has(element)) return;
 
+        const originalDisplay = previewedElements.get(element);
         if (originalDisplay !== "") {
-            selectedElement.style.display = originalDisplay;
+            element.style.display = originalDisplay;
         } else {
-            selectedElement.style.removeProperty("display");
+            element.style.removeProperty("display");
         }
 
-        originalDisplay = "";
-        wasPreviewing = false;
+        previewedElements.delete(element);
+    };
+
+    const restorePreview = () => {
+        Array.from(previewedElements.keys()).forEach(restorePreviewForElement);
+    };
+
+    const previewElement = (element) => {
+        if (!element || previewedElements.has(element)) return;
+
+        previewedElements.set(element, element.style.display);
+        element.style.setProperty("display", "none", "important");
+    };
+
+    const isPreviewEnabled = () => {
+        const toggle = shadowRoot ? shadowRoot.getElementById("preview-toggle") : null;
+        return Boolean(toggle && toggle.classList.contains("checked"));
+    };
+
+    const applyPreviewToSelection = () => {
+        selectedElements.forEach(previewElement);
+
+        Array.from(previewedElements.keys()).forEach((element) => {
+            if (!selectedElements.has(element)) {
+                restorePreviewForElement(element);
+            }
+        });
+    };
+
+    const updateSelectionControls = () => {
+        if (!shadowRoot) return;
+
+        const selectedCount = selectedElements.size;
+        const hasSelection = selectedCount > 0;
+        const activeSelector = activeSelectedElement ? generateSelector(activeSelectedElement) : "";
+
+        const instruction = shadowRoot.getElementById("picker-instruction");
+        const selectionCount = shadowRoot.getElementById("selection-count");
+        const displayInput = shadowRoot.getElementById("selector-display");
+        const parentBtn = shadowRoot.getElementById("parent-btn");
+        const previewToggle = shadowRoot.getElementById("preview-toggle");
+        const confirmBtn = shadowRoot.getElementById("confirm-btn");
+
+        if (instruction) {
+            instruction.textContent = hasSelection
+                ? "Click more elements to add, or click selected elements to remove"
+                : "Hover over elements and click to select";
+        }
+
+        if (selectionCount) {
+            selectionCount.textContent = `${selectedCount} selected`;
+        }
+
+        if (displayInput) {
+            displayInput.value = formatSelectionSummary(selectedCount, activeSelector);
+        }
+
+        if (parentBtn) {
+            parentBtn.style.display = activeSelectedElement ? "block" : "none";
+        }
+
+        if (previewToggle) {
+            previewToggle.style.display = hasSelection ? "flex" : "none";
+            if (!hasSelection) {
+                previewToggle.classList.remove("checked");
+                restorePreview();
+            }
+        }
+
+        if (confirmBtn) {
+            confirmBtn.style.display = hasSelection ? "block" : "none";
+            confirmBtn.textContent = formatConfirmButtonLabel(selectedCount);
+        }
     };
 
     const startPicker = () => {
         if (isPickerActive) return;
         isPickerActive = true;
-        selectedElement = null;
+        selectedElements = new Set();
+        activeSelectedElement = null;
         hoveredElement = null;
+        previewedElements.clear();
 
         // Create the Shadow DOM container for Picker UI
         pickerRoot = document.createElement("div");
@@ -144,14 +271,15 @@
         if (!isPickerActive) return;
         isPickerActive = false;
 
+        restorePreview();
+
         // Remove picker outline classes
         if (hoveredElement) {
             hoveredElement.classList.remove("glassveil-picker-hovered");
         }
-        if (selectedElement) {
-            selectedElement.classList.remove("glassveil-picker-hovered");
-            restorePreview();
-        }
+        selectedElements.forEach((element) => {
+            element.classList.remove("glassveil-picker-hovered", "glassveil-picker-selected");
+        });
 
         // Clean up event listeners
         document.removeEventListener("mouseover", handleMouseOver, true);
@@ -166,8 +294,8 @@
         pickerRoot = null;
         shadowRoot = null;
         hoveredElement = null;
-        selectedElement = null;
-        originalDisplay = "";
+        selectedElements.clear();
+        activeSelectedElement = null;
     };
 
     // Shadow DOM UI Markup
@@ -259,6 +387,17 @@
                 letter-spacing: 0.5px;
             }
 
+            .selection-count {
+                font-size: 11px;
+                font-weight: 700;
+                color: #67e8f9;
+                background: rgba(103, 232, 249, 0.1);
+                border: 1px solid rgba(103, 232, 249, 0.18);
+                border-radius: 999px;
+                padding: 3px 8px;
+                white-space: nowrap;
+            }
+
             .instruction {
                 font-size: 11px;
                 color: #94a3b8;
@@ -304,6 +443,7 @@
                 cursor: pointer;
                 transition: all 0.2s ease;
                 border: none;
+                white-space: nowrap;
             }
 
             .btn-primary {
@@ -388,6 +528,7 @@
                 <div class="title-area">
                     <div class="logo-shield"></div>
                     <h3>GlassVeil Picker</h3>
+                    <span class="selection-count" id="selection-count">0 selected</span>
                     <span class="drag-hint">drag to move</span>
                 </div>
                 <span class="instruction" id="picker-instruction">Hover over elements and click to select</span>
@@ -405,7 +546,7 @@
                 </div>
                 <div class="control-group">
                     <button class="btn btn-secondary" id="cancel-btn">Cancel</button>
-                    <button class="btn btn-primary" id="confirm-btn" style="display: none;">Block Element</button>
+                    <button class="btn btn-primary" id="confirm-btn" style="display: none;">Block Selected (0)</button>
                 </div>
             </div>
         `;
@@ -486,7 +627,7 @@
 
     // Mouse Move Highlight Handlers
     const handleMouseOver = (e) => {
-        if (!isPickerActive || selectedElement) return;
+        if (!isPickerActive) return;
 
         const el = e.target;
 
@@ -500,31 +641,35 @@
         }
 
         hoveredElement = el;
-        hoveredElement.classList.add("glassveil-picker-hovered");
+        if (!selectedElements.has(hoveredElement)) {
+            hoveredElement.classList.add("glassveil-picker-hovered");
+        }
 
         // Generate real-time CSS selector
         const selector = generateSelector(hoveredElement);
         const displayInput = shadowRoot.getElementById("selector-display");
-        if (displayInput) {
+        if (displayInput && selectedElements.size === 0) {
             displayInput.value = selector;
         }
     };
 
     const handleMouseOut = (e) => {
-        if (!isPickerActive || selectedElement) return;
+        if (!isPickerActive) return;
 
         if (hoveredElement && e.target === hoveredElement) {
-            hoveredElement.classList.remove("glassveil-picker-hovered");
+            if (!selectedElements.has(hoveredElement)) {
+                hoveredElement.classList.remove("glassveil-picker-hovered");
+            }
             hoveredElement = null;
 
             const displayInput = shadowRoot.getElementById("selector-display");
-            if (displayInput) {
+            if (displayInput && selectedElements.size === 0) {
                 displayInput.value = "";
             }
         }
     };
 
-    // Click handler to freeze selection
+    // Click handler to toggle one element in the current selection
     const handleElementClick = (e) => {
         if (!isPickerActive) return;
 
@@ -539,29 +684,34 @@
         e.preventDefault();
         e.stopPropagation();
 
-        if (selectedElement) {
-            // Re-enable original state if clicking another element
-            selectedElement.classList.remove("glassveil-picker-hovered");
-            restorePreview();
-        }
+        const targetElement = e.target;
 
-        selectedElement = e.target;
-        if (hoveredElement) {
-            hoveredElement.classList.remove("glassveil-picker-hovered");
+        if (hoveredElement === targetElement) {
+            targetElement.classList.remove("glassveil-picker-hovered");
             hoveredElement = null;
         }
 
-        selectedElement.classList.add("glassveil-picker-hovered");
+        if (selectedElements.has(targetElement)) {
+            selectedElements.delete(targetElement);
+            targetElement.classList.remove("glassveil-picker-hovered", "glassveil-picker-selected");
+            restorePreviewForElement(targetElement);
 
-        // Show Confirmation Controls
-        shadowRoot.getElementById("picker-instruction").textContent = "Selected Element locked";
-        shadowRoot.getElementById("parent-btn").style.display = "block";
-        shadowRoot.getElementById("preview-toggle").style.display = "flex";
-        shadowRoot.getElementById("confirm-btn").style.display = "block";
+            if (activeSelectedElement === targetElement) {
+                const remainingSelection = Array.from(selectedElements);
+                activeSelectedElement = remainingSelection[remainingSelection.length - 1] || null;
+            }
+        } else {
+            selectedElements.add(targetElement);
+            activeSelectedElement = targetElement;
+            targetElement.classList.remove("glassveil-picker-hovered");
+            targetElement.classList.add("glassveil-picker-selected");
 
-        // Update displayed selector
-        const selector = generateSelector(selectedElement);
-        shadowRoot.getElementById("selector-display").value = selector;
+            if (isPreviewEnabled()) {
+                previewElement(targetElement);
+            }
+        }
+
+        updateSelectionControls();
     };
 
     // Keyboard shortcut handlers (Escape to cancel)
@@ -574,77 +724,77 @@
     // Action Bar Controller functions
     const handleSelectParent = (e) => {
         e.stopPropagation();
-        if (!selectedElement) return;
+        if (!activeSelectedElement) return;
 
-        const parent = selectedElement.parentElement;
+        const currentElement = activeSelectedElement;
+        const parent = currentElement.parentElement;
         if (!parent || parent === document.body || parent === document.documentElement) {
             alert("Cannot select parent any further.");
             return;
         }
 
-        // Remove highlight and reset preview on current element
-        selectedElement.classList.remove("glassveil-picker-hovered");
-        restorePreview();
+        selectedElements.delete(currentElement);
+        currentElement.classList.remove("glassveil-picker-hovered", "glassveil-picker-selected");
+        restorePreviewForElement(currentElement);
 
         // Set parent as the new selected element
-        selectedElement = parent;
-        selectedElement.classList.add("glassveil-picker-hovered");
+        activeSelectedElement = parent;
+        selectedElements.add(parent);
+        parent.classList.remove("glassveil-picker-hovered");
+        parent.classList.add("glassveil-picker-selected");
 
-        // Reset preview toggle visual state
-        const toggle = shadowRoot.getElementById("preview-toggle");
-        toggle.classList.remove("checked");
+        if (isPreviewEnabled()) {
+            previewElement(parent);
+        }
 
-        // Update displayed selector
-        const selector = generateSelector(selectedElement);
-        shadowRoot.getElementById("selector-display").value = selector;
+        updateSelectionControls();
     };
 
     const handleTogglePreview = (e) => {
         e.stopPropagation();
-        if (!selectedElement) return;
+        if (selectedElements.size === 0) return;
 
         const toggle = shadowRoot.getElementById("preview-toggle");
         const isChecked = toggle.classList.toggle("checked");
 
         if (isChecked) {
-            // Hide element temporarily
-            originalDisplay = selectedElement.style.display;
-            wasPreviewing = true;
-            selectedElement.style.setProperty("display", "none", "important");
+            applyPreviewToSelection();
         } else {
-            // Restore element
             restorePreview();
         }
     };
 
     const handleConfirmBlock = async (e) => {
         e.stopPropagation();
-        if (!selectedElement) return;
+        if (selectedElements.size === 0) return;
 
-        const selector = shadowRoot.getElementById("selector-display").value;
-        if (!selector) return;
+        const selectedSelectors = Array.from(selectedElements)
+            .map(generateSelector)
+            .filter(Boolean);
 
-        console.log("[GlassVeil] Confirming block for selector:", selector);
+        if (selectedSelectors.length === 0) return;
+
+        console.log("[GlassVeil] Confirming block for selectors:", selectedSelectors);
 
         try {
-            // Save selector to storage
+            // Save selectors to storage
             const { rules = {} } = await chrome.storage.local.get("rules");
             const siteRules = rules[currentDomain] || [];
+            const mergedSiteRules = mergeUniqueSelectors(siteRules, selectedSelectors);
 
-            if (!siteRules.includes(selector)) {
-                siteRules.push(selector);
-                rules[currentDomain] = siteRules;
+            if (mergedSiteRules.length !== siteRules.length) {
+                rules[currentDomain] = mergedSiteRules;
                 await chrome.storage.local.set({ rules });
-                console.log("[GlassVeil] Rule successfully saved to local storage.");
+                console.log("[GlassVeil] Rules successfully saved to local storage.");
             } else {
-                console.log("[GlassVeil] Rule already exists in local storage.");
+                console.log("[GlassVeil] Selected rules already exist in local storage.");
             }
 
             // Apply rules immediately in the active session
-            activeSelectors = siteRules;
+            activeSelectors = mergedSiteRules;
             applyRules(activeSelectors, isBlockerEnabled);
         } catch (err) {
-            console.error("[GlassVeil] Error saving/applying rule:", err);
+            console.error("[GlassVeil] Error saving/applying rules:", err);
         }
 
         // Clean up picker and stop
@@ -699,7 +849,7 @@
                     const cls = current.classList[i];
 
                     if (
-                        cls === "glassveil-picker-hovered" ||
+                        isPickerStateClass(cls) ||
                         /\d{4,}/.test(cls) ||
                         cls.length > 25 ||
                         cls.includes("_") ||
@@ -746,3 +896,4 @@
     };
 
 })();
+}

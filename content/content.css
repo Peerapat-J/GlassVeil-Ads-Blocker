@@ -1,10 +1,19 @@
 /* content/content.css */
 
 /* Highlight class applied to hovered elements during selection mode */
-.glassveil-picker-hovered {
+.glassveil-picker-hovered:not(.glassveil-picker-selected) {
     outline: 2px dashed #00f2fe !important;
     outline-offset: -2px !important;
     box-shadow: 0 0 15px rgba(0, 242, 254, 0.6), inset 0 0 10px rgba(0, 242, 254, 0.3) !important;
+    cursor: crosshair !important;
+    transition: outline 0.1s ease, box-shadow 0.1s ease !important;
+}
+
+/* Persistent highlight class applied to selected elements */
+.glassveil-picker-selected {
+    outline: 2px solid #7f00ff !important;
+    outline-offset: -2px !important;
+    box-shadow: 0 0 16px rgba(127, 0, 255, 0.55), inset 0 0 12px rgba(127, 0, 255, 0.25) !important;
     cursor: crosshair !important;
     transition: outline 0.1s ease, box-shadow 0.1s ease !important;
 }
