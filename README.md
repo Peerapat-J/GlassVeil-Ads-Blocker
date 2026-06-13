@@ -7,7 +7,7 @@ Instead of relying on predefined filter lists, GlassVeil gives you a visual elem
 
 ## Features
 
-- Visual element picker for selecting page elements
+- Visual element picker for selecting one or more page elements
 - Cosmetic blocking using CSS rules
 - Per-site blocking rules
 - Enable or disable blocking for the current site
@@ -48,14 +48,11 @@ Instead of relying on predefined filter lists, GlassVeil gives you a visual elem
 <img src="readmeAsset/menu_v1.png" alt="Pick Element button" width="420">
 
 4. Hover over the page element you want to hide.
-5. Click the element to select it.
+5. Click one or more elements to select them. Click a selected element again to remove it.
 6. Optionally use:
    - **Select Parent** to block a larger container
-   - **Preview Hide** to test the result before saving
-7. Optionally use:
-   - Select Parent to block a larger container
-   - Preview Hide to test the result before saving
-8. Click Block Element.
+   - **Preview Hide** to test the selected elements before saving
+7. Click **Block Selected**.
 
 <img src="readmeAsset/previewHide.png" alt="" width="420">
 
