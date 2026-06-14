@@ -10,6 +10,23 @@ var GlassVeilPickerUtils = globalThis.GlassVeilPickerUtils || (() => {
 
     const formatSelectedOutlineLabel = (selectedIndex) => `${selectedIndex + 1}`;
 
+    const clampPanelPosition = ({
+        left,
+        top,
+        panelWidth,
+        panelHeight,
+        viewportWidth,
+        viewportHeight
+    }) => {
+        const maxLeft = Math.max(0, viewportWidth - panelWidth);
+        const maxTop = Math.max(0, viewportHeight - panelHeight);
+
+        return {
+            left: Math.max(0, Math.min(left, maxLeft)),
+            top: Math.max(0, Math.min(top, maxTop))
+        };
+    };
+
     const mergeUniqueSelectors = (existingSelectors = [], newSelectors = []) => {
         const mergedSelectors = Array.isArray(existingSelectors) ? [...existingSelectors] : [];
 
@@ -36,6 +53,7 @@ var GlassVeilPickerUtils = globalThis.GlassVeilPickerUtils || (() => {
     return {
         isPickerStateClass,
         formatSelectedOutlineLabel,
+        clampPanelPosition,
         mergeUniqueSelectors,
         formatConfirmButtonLabel,
         formatSelectionSummary
@@ -57,6 +75,7 @@ if (typeof window !== "undefined") {
     const {
         isPickerStateClass,
         formatSelectedOutlineLabel,
+        clampPanelPosition,
         mergeUniqueSelectors,
         formatConfirmButtonLabel,
         formatSelectionSummary
@@ -155,6 +174,7 @@ if (typeof window !== "undefined") {
     // UI container references
     let pickerRoot = null;
     let shadowRoot = null;
+    let pickerPanel = null;
 
     const getOutlineLayer = () => shadowRoot ? shadowRoot.getElementById("selected-outline-layer") : null;
 
@@ -242,7 +262,25 @@ if (typeof window !== "undefined") {
     };
 
     const handleViewportChange = () => {
+        clampPickerPanelToViewport();
         scheduleSelectedOutlineSync();
+    };
+
+    const clampPickerPanelToViewport = () => {
+        if (!pickerPanel || !pickerPanel.classList.contains("free")) return;
+
+        const rect = pickerPanel.getBoundingClientRect();
+        const position = clampPanelPosition({
+            left: rect.left,
+            top: rect.top,
+            panelWidth: rect.width,
+            panelHeight: rect.height,
+            viewportWidth: window.innerWidth,
+            viewportHeight: window.innerHeight
+        });
+
+        pickerPanel.style.left = `${position.left}px`;
+        pickerPanel.style.top = `${position.top}px`;
     };
 
     const restorePreviewForElement = (element) => {
@@ -395,6 +433,7 @@ if (typeof window !== "undefined") {
         }
         pickerRoot = null;
         shadowRoot = null;
+        pickerPanel = null;
         hoveredElement = null;
         selectedElements.clear();
         activeSelectedElement = null;
@@ -428,6 +467,7 @@ if (typeof window !== "undefined") {
                 z-index: 2147483647;
                 opacity: 0;
                 transition: transform 0.4s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.3s ease;
+                max-width: calc(100vw - 32px);
             }
 
             .selected-outline-layer {
@@ -491,6 +531,8 @@ if (typeof window !== "undefined") {
                 align-items: center;
                 cursor: grab;
                 user-select: none;
+                touch-action: none;
+                gap: 16px;
             }
 
             .panel-header:active {
@@ -499,10 +541,14 @@ if (typeof window !== "undefined") {
 
             .drag-hint {
                 font-size: 10px;
-                color: rgba(148, 163, 184, 0.45);
+                color: rgba(103, 232, 249, 0.8);
                 letter-spacing: 0.3px;
                 pointer-events: none;
                 margin-left: 6px;
+                border: 1px solid rgba(103, 232, 249, 0.2);
+                border-radius: 999px;
+                padding: 3px 7px;
+                background: rgba(103, 232, 249, 0.08);
             }
 
             .title-area {
@@ -666,6 +712,7 @@ if (typeof window !== "undefined") {
         const container = document.createElement("div");
         container.id = "glassveil-panel";
         container.className = "picker-panel";
+        pickerPanel = container;
         container.innerHTML = `
             <div class="panel-header" id="panel-drag-handle">
                 <div class="title-area">
@@ -709,9 +756,19 @@ if (typeof window !== "undefined") {
         let dragOffsetX = 0;
         let dragOffsetY = 0;
 
-        dragHandle.addEventListener("mousedown", (e) => {
-            // Only drag on left-button, not on child buttons/inputs
-            if (e.button !== 0) return;
+        const stopDragging = (e) => {
+            if (!isDragging) return;
+            isDragging = false;
+            container.classList.remove("dragging");
+
+            if (e.pointerId !== undefined && dragHandle.hasPointerCapture(e.pointerId)) {
+                dragHandle.releasePointerCapture(e.pointerId);
+            }
+        };
+
+        dragHandle.addEventListener("pointerdown", (e) => {
+            // Only drag on left-button mouse input, while still supporting touch/stylus.
+            if (e.pointerType === "mouse" && e.button !== 0) return;
             if (e.target.closest("button, input, a")) return;
 
             isDragging = true;
@@ -725,35 +782,33 @@ if (typeof window !== "undefined") {
             dragOffsetX = e.clientX - rect.left;
             dragOffsetY = e.clientY - rect.top;
 
+            dragHandle.setPointerCapture(e.pointerId);
             e.preventDefault();
             e.stopPropagation();
         });
 
-        // Use shadowRoot's ownerDocument so events fire even when mouse
-        // leaves the shadow host element during a fast drag.
-        const ownerDoc = shadowRoot.host.ownerDocument;
-
-        ownerDoc.addEventListener("mousemove", (e) => {
+        dragHandle.addEventListener("pointermove", (e) => {
             if (!isDragging) return;
 
-            let newLeft = e.clientX - dragOffsetX;
-            let newTop = e.clientY - dragOffsetY;
+            const position = clampPanelPosition({
+                left: e.clientX - dragOffsetX,
+                top: e.clientY - dragOffsetY,
+                panelWidth: container.offsetWidth,
+                panelHeight: container.offsetHeight,
+                viewportWidth: window.innerWidth,
+                viewportHeight: window.innerHeight
+            });
 
-            // Clamp inside the viewport
-            const panelW = container.offsetWidth;
-            const panelH = container.offsetHeight;
-            newLeft = Math.max(0, Math.min(newLeft, window.innerWidth - panelW));
-            newTop = Math.max(0, Math.min(newTop, window.innerHeight - panelH));
+            container.style.left = `${position.left}px`;
+            container.style.top = `${position.top}px`;
 
-            container.style.left = newLeft + "px";
-            container.style.top = newTop + "px";
-        }, true);
+            e.preventDefault();
+            e.stopPropagation();
+        });
 
-        ownerDoc.addEventListener("mouseup", () => {
-            if (!isDragging) return;
-            isDragging = false;
-            container.classList.remove("dragging");
-        }, true);
+        dragHandle.addEventListener("pointerup", stopDragging);
+        dragHandle.addEventListener("pointercancel", stopDragging);
+        dragHandle.addEventListener("lostpointercapture", stopDragging);
         // ── End drag logic ──────────────────────────────────────────────
 
         // Wire panel button listeners
